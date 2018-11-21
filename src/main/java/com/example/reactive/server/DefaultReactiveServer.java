@@ -49,12 +49,13 @@ public class DefaultReactiveServer implements ReactiveServer {
 
                 server.register(selector, SelectionKey.OP_ACCEPT);
 
-                sink.onDispose(() -> unchecked(server::close));
+                sink.onDispose(unchecked(server::close)::run);
 
                 while (true) {
                     selector.select(unchecked(key -> {
                         if (key.isValid()) {
                             if (key.isAcceptable()) {
+                                //region Socket Accepting
                                 var ssc = (ServerSocketChannel) key.channel();
                                 var sc = ssc.accept(); // never null, nonblocking
 
@@ -63,7 +64,7 @@ public class DefaultReactiveServer implements ReactiveServer {
                                 var readsProcessor = UnicastProcessor.create(Queues.<SelectionKey>one().get());
                                 var writesProcessor = UnicastProcessor.create(Queues.<SelectionKey>one().get());
 
-                                connections.put(sc, Tuples.of(writesProcessor.sink(), readsProcessor.sink()));
+                                connections.put(sc, Tuples.of(readsProcessor.sink(), writesProcessor.sink()));
 
                                 sink.next(connectionsHandler.apply(new DefaultConnection(
                                     sc,
@@ -71,16 +72,21 @@ public class DefaultReactiveServer implements ReactiveServer {
                                     readsProcessor,
                                     writesProcessor
                                 )).subscribe());
+                                //endregion
                             }
                             else if (key.isReadable()) {
+                                //region Read Notification
                                 connections.get(key.channel())
                                            .getT1()
                                            .next(key);
+                                //endregion
                             }
                             else if (key.isWritable()) {
+                                //region Write Notification
                                 connections.get(key.channel())
                                            .getT2()
                                            .next(key);
+                                //endregion
                             }
                         }
                     }));

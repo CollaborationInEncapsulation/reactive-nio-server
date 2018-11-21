@@ -16,6 +16,8 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import reactor.util.Loggers;
 
+import static pl.touk.throwing.ThrowingRunnable.unchecked;
+
 public class DefaultReactiveServerTest {
 
     @Test
@@ -70,6 +72,7 @@ public class DefaultReactiveServerTest {
         Assert.assertEquals(helloWorldByteLength, channel.read(buffer));
         Assert.assertEquals("Hello World", new String(buffer.array()));
         server.get().dispose();
+        Thread.sleep(1000);
     }
 
 
@@ -87,32 +90,18 @@ public class DefaultReactiveServerTest {
                 .start()
                 .subscribe();
 
-        var channel = SocketChannel.open(new InetSocketAddress(8080));
+        var channel = SocketChannel.open(new InetSocketAddress("localhost", 8080));
 
         cdl.await();
 
         StepVerifier.create(connectionReference.get().receive(), 0)
                     .expectSubscription()
-                    .then(() -> {
-                        try {
-                            channel.write(ByteBuffer.wrap("Hello World".getBytes()));
-                        }
-                        catch (Exception e) {
-                            throw Exceptions.bubble(e);
-                        }
-                    })
+                    .then(unchecked(() -> channel.write(ByteBuffer.wrap("Hello World".getBytes()))))
                     .thenRequest(1)
-                    .assertNext(bb -> Assert.assertEquals("Hello World", new String(bb.array())))
-                    .then(() -> {
-                        try {
-                            channel.write(ByteBuffer.wrap("World Hello".getBytes()));
-                        }
-                        catch (Exception e) {
-                            throw Exceptions.bubble(e);
-                        }
-                    })
+                    .assertNext(bb -> Assert.assertEquals("Hello World", new String(bb.array()).trim()))
+                    .then(unchecked(() -> channel.write(ByteBuffer.wrap("Hello World".getBytes()))))
                     .thenRequest(1)
-                    .assertNext(bb -> Assert.assertEquals("World Hello", new String(bb.array())))
+                    .assertNext(bb -> Assert.assertEquals("World Hello", new String(bb.array()).trim()))
                     .thenCancel()
                     .verify();
         server.dispose();

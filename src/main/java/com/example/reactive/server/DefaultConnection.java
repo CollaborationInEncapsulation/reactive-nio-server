@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.util.Arrays;
 
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscription;
@@ -61,30 +60,23 @@ public class DefaultConnection implements Connection {
             .doOnSubscribe(unchecked(__ -> {
                 var selector = currentSelectionKey.selector();
 
+
                 socketChannel.register(selector, SelectionKey.OP_READ);
                 selector.wakeup();
             }))
             .publishOn(scheduler)
             .doOnCancel(this::dispose)
             .concatMap(unchecked(sk -> {
-                int read;
                 var buffer = ByteBuffer.allocate(1024);
-
-                read = socketChannel.read(buffer);
+                var read = socketChannel.read(buffer);
 
                 if (read > 0) {
                     currentSelectionKey = sk;
 
-                    if (read < 1024) {
-                        return Mono.just(ByteBuffer.wrap(Arrays.copyOf(buffer.array(), read)));
-                    }
-                    else {
-                        return Mono.just(buffer.flip());
-                    }
+                    return Mono.just(buffer.flip());
                 }
-                else {
-                    return Mono.empty();
-                }
+
+                return Mono.empty();
             }), 1);
     }
 

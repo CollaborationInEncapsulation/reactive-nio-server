@@ -8,7 +8,10 @@ version '0.0.1.BUILD-SNAPSHOT'
 sourceCompatibility = 11
 
 repositories {
-    mavenLocal()
+//    mavenLocal()
+    maven {
+      url = "https://repo.spring.io/snapshot"
+    }
     mavenCentral()
 }
 
