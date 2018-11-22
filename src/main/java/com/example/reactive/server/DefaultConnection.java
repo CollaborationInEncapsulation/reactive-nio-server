@@ -91,12 +91,12 @@ public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Con
     protected void hookOnSubscribe(Subscription subscription) {
         subscription.request(1);
         writeNotifier
-                .doOnNext(sk -> {
-                    currentSelectionKey = sk;
-                    currentSelectionKey.interestOps(SelectionKey.OP_READ);
-                })
-                .publishOn(scheduler)
-                .subscribe(__ -> hookOnNext(current));
+            .doOnNext(sk -> {
+                currentSelectionKey = sk;
+                currentSelectionKey.interestOps(SelectionKey.OP_READ);
+            })
+            .publishOn(scheduler)
+            .subscribe(__ -> hookOnNext(current));
     }
 
     @Override
