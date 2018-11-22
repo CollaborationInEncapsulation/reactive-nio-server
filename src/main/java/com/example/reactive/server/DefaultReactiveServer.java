@@ -42,8 +42,9 @@ public class DefaultReactiveServer implements ReactiveServer {
         return Flux
             .create(unchecked(sink -> {
                 var connections = new HashMap<SocketChannel, Tuple2<FluxSink<SelectionKey>, FluxSink<SelectionKey>>>();
-                var server = ServerSocketChannel.open()
-                                                .bind(new InetSocketAddress(address.getHostName(), address.getPort()));
+                var server = ServerSocketChannel
+                    .open()
+                    .bind(new InetSocketAddress(address.getHostName(), address.getPort()));
 
                 server.configureBlocking(false);
 
@@ -62,16 +63,24 @@ public class DefaultReactiveServer implements ReactiveServer {
 
                                 sc.configureBlocking(false);
 
+                                //region Complex Fluxes Creation
                                 var readsProcessor = UnicastProcessor.create(Queues.<SelectionKey>one().get());
                                 var writesProcessor = UnicastProcessor.create(Queues.<SelectionKey>one().get());
+                                //endregion
 
-                                connections.put(sc, Tuples.of(readsProcessor.sink(), writesProcessor.sink()));
+                                connections.put(
+                                    sc,
+                                    //region Value
+                                    Tuples.of(readsProcessor.sink(), writesProcessor.sink())
+                                    //endregion
+                                );
 
-                                sink.next(connectionsHandler.apply(new DefaultConnection(
+                                sink.next(connectionsHandler.apply(new DefaultConnection( //region Connection Params
                                     sc,
                                     key,
                                     readsProcessor,
                                     writesProcessor
+                                    //endregion
                                 )).subscribe());
                                 //endregion
                             }

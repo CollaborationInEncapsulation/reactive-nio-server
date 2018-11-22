@@ -22,11 +22,13 @@ public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Con
     final SocketChannel      socketChannel;
     final Flux<SelectionKey> readNotifier;
     final Flux<SelectionKey> writeNotifier;
+    //region Complex Params
     final Scheduler          scheduler;
 
     volatile SelectionKey currentSelectionKey;
 
     ByteBuffer current;
+    //endregion
 
     DefaultConnection(
         SocketChannel socketChannel,
@@ -37,8 +39,10 @@ public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Con
         this.socketChannel = socketChannel;
         this.readNotifier = readNotifier;
         this.writeNotifier = writeNotifier;
-        this.scheduler = Schedulers.single(Schedulers.parallel());
         this.currentSelectionKey = initialSelectionKey;
+        //region Attach to Scheduler
+        this.scheduler = Schedulers.single(Schedulers.parallel());
+        //endregion
     }
 
     @Override
@@ -55,16 +59,18 @@ public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Con
     @Override
     public Flux<ByteBuffer> receive() {
         return readNotifier
-            .onBackpressureLatest()
             .doOnSubscribe(unchecked(__ -> {
                 var selector = currentSelectionKey.selector();
 
                 socketChannel.register(selector, SelectionKey.OP_READ);
                 selector.wakeup();
             }))
+            //region Complex Receive Pipe
+            .onBackpressureLatest()
             .doOnNext(sk -> currentSelectionKey = sk)
             .publishOn(scheduler)
             .doOnCancel(this::close)
+            //endregion
             .concatMap(unchecked(sk -> {
                 var buffer = ByteBuffer.allocate(1024);
                 var read = socketChannel.read(buffer);
@@ -91,11 +97,13 @@ public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Con
     protected void hookOnSubscribe(Subscription subscription) {
         subscription.request(1);
         writeNotifier
+            //region Complex Write Pipe
             .doOnNext(sk -> {
                 currentSelectionKey = sk;
                 currentSelectionKey.interestOps(SelectionKey.OP_READ);
             })
             .publishOn(scheduler)
+            //endregion
             .subscribe(__ -> hookOnNext(current));
     }
 
