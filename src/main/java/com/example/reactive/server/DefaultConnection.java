@@ -1,13 +1,13 @@
 package com.example.reactive.server;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscription;
-import reactor.core.Exceptions;
 import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -17,7 +17,7 @@ import reactor.core.scheduler.Schedulers;
 import static pl.touk.throwing.ThrowingConsumer.unchecked;
 import static pl.touk.throwing.ThrowingFunction.unchecked;
 
-public class DefaultConnection implements Connection {
+public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Connection {
 
     final SocketChannel      socketChannel;
     final Flux<SelectionKey> readNotifier;
@@ -25,6 +25,8 @@ public class DefaultConnection implements Connection {
     final Scheduler          scheduler;
 
     volatile SelectionKey currentSelectionKey;
+
+    ByteBuffer current;
 
     DefaultConnection(
         SocketChannel socketChannel,
@@ -40,17 +42,14 @@ public class DefaultConnection implements Connection {
     }
 
     @Override
-    public void dispose() {
-        var key = this.currentSelectionKey;
+    public void close() {
+        var key = currentSelectionKey;
+
         if (key != null) {
+            dispose();
             currentSelectionKey = null;
             key.cancel();
         }
-    }
-
-    @Override
-    public boolean isDisposed() {
-        return false;
     }
 
     @Override
@@ -60,94 +59,71 @@ public class DefaultConnection implements Connection {
             .doOnSubscribe(unchecked(__ -> {
                 var selector = currentSelectionKey.selector();
 
-
                 socketChannel.register(selector, SelectionKey.OP_READ);
                 selector.wakeup();
             }))
+            .doOnNext(sk -> currentSelectionKey = sk)
             .publishOn(scheduler)
-            .doOnCancel(this::dispose)
+            .doOnCancel(this::close)
             .concatMap(unchecked(sk -> {
                 var buffer = ByteBuffer.allocate(1024);
                 var read = socketChannel.read(buffer);
 
                 if (read > 0) {
-                    currentSelectionKey = sk;
-
                     return Mono.just(buffer.flip());
                 }
 
                 return Mono.empty();
-            }), 1);
+            }));
     }
 
     @Override
     public Mono<Void> send(Publisher<ByteBuffer> dataStream) {
-        return Mono.create(s ->
-            Flux.from(dataStream)
-                .subscribe(new BaseSubscriber<>() {
-                    ByteBuffer current;
+        return Mono
+            .<Void>fromRunnable(() ->
+                Flux.from(dataStream)
+                    .subscribe(this)
+            )
+            .doOnCancel(this::close);
+    }
 
-                    @Override
-                    protected void hookOnSubscribe(Subscription subscription) {
-                        s.onCancel(subscription::cancel);
-                        subscription.request(1);
-                        writeNotifier
-                            .doOnNext(sk -> {
-                                currentSelectionKey = sk;
-                                currentSelectionKey.interestOps(SelectionKey.OP_READ);
-                            })
-                            .publishOn(scheduler)
-                            .subscribe(__ -> write());
-                    }
-
-                    @Override
-                    protected void hookOnNext(ByteBuffer value) {
-                        current = value;
-                        write();
-                    }
-
-                    @Override
-                    protected void hookOnError(Throwable throwable) {
-                        s.error(throwable);
-                    }
-
-                    @Override
-                    protected void hookOnComplete() {
-                        s.success();
-                    }
-
-                    private void write() {
-                        int result;
-                        var buffer = current;
-
-                        if (buffer == null) {
-                            return;
-                        }
-
-                        try {
-                            result = socketChannel.write(buffer);
-                        }
-                        catch (IOException e) {
-                            throw Exceptions.propagate(e);
-                        }
-
-                        if (result == -1) {
-                            upstream().cancel();
-                        }
-
-                        if (buffer.hasRemaining()) {
-                            var key = currentSelectionKey;
-
-                            key.interestOps(SelectionKey.OP_WRITE);
-                            key.selector().wakeup();
-
-                            return;
-                        }
-
-                        current = null;
-                        upstream().request(1);
-                    }
+    @Override
+    protected void hookOnSubscribe(Subscription subscription) {
+        subscription.request(1);
+        writeNotifier
+                .doOnNext(sk -> {
+                    currentSelectionKey = sk;
+                    currentSelectionKey.interestOps(SelectionKey.OP_READ);
                 })
-        );
+                .publishOn(scheduler)
+                .subscribe(__ -> hookOnNext(current));
+    }
+
+    @Override
+    protected void hookOnNext(ByteBuffer buffer) {
+        int result;
+
+        try {
+            result = socketChannel.write(buffer);
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        if (result == -1) {
+            upstream().cancel();
+        }
+
+        if (buffer.hasRemaining()) {
+            current = buffer;
+            var key = currentSelectionKey;
+
+            key.interestOps(SelectionKey.OP_WRITE);
+            key.selector().wakeup();
+
+            return;
+        }
+
+        upstream().request(1);
     }
 }

@@ -43,8 +43,10 @@ public class DefaultReactiveServer implements ReactiveServer {
             .create(unchecked(sink -> {
                 var connections = new HashMap<SocketChannel, Tuple2<FluxSink<SelectionKey>, FluxSink<SelectionKey>>>();
                 var server = ServerSocketChannel.open()
-                                                .bind(new InetSocketAddress(address.getHostName(), address.getPort()))
-                                                .configureBlocking(false);
+                                                .bind(new InetSocketAddress(address.getHostName(), address.getPort()));
+
+                server.configureBlocking(false);
+
                 var selector = Selector.open();
 
                 server.register(selector, SelectionKey.OP_ACCEPT);
@@ -56,8 +58,7 @@ public class DefaultReactiveServer implements ReactiveServer {
                         if (key.isValid()) {
                             if (key.isAcceptable()) {
                                 //region Socket Accepting
-                                var ssc = (ServerSocketChannel) key.channel();
-                                var sc = ssc.accept(); // never null, nonblocking
+                                var sc = server.accept();
 
                                 sc.configureBlocking(false);
 

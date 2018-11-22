@@ -11,7 +11,6 @@ import java.util.logging.Logger;
 import org.junit.Assert;
 import org.junit.Test;
 import reactor.core.Disposable;
-import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import reactor.util.Loggers;
@@ -23,56 +22,56 @@ public class DefaultReactiveServerTest {
     @Test
     public void testSendsAndReceivesExpectedData() throws Exception {
         var server = new AtomicReference<Disposable>();
-        new Thread(
-            () -> server.set(ReactiveServer
-                .create("localhost", 8080)
-                .handle(connection ->
-                    connection
-                        .receive()
-                        .bufferUntil(bb -> new String(bb.array()).contains("-END-"))
-                        .map(listOfBuffers -> {
-                            int totalCapacity = 0;
+        try {
+            new Thread(() -> server.set(
+                ReactiveServer
+                    .create("localhost", 8080)
+                    .handle(connection ->
+                        connection
+                            .receive()
+                            .bufferUntil(bb -> new String(bb.array()).contains("-END-"))
+                            .map(listOfBuffers -> {
+                                int totalCapacity = 0;
+                                var endBuffer = listOfBuffers.get(listOfBuffers.size() - 1);
 
-                            var endBuffer = listOfBuffers.get(listOfBuffers.size() - 1);
+                                endBuffer.limit(endBuffer.limit() - ("-END-").getBytes().length);
 
-                            endBuffer.limit(endBuffer.limit() - ("-END-").getBytes().length);
+                                for (ByteBuffer bb : listOfBuffers) {
+                                    totalCapacity += bb.limit();
+                                }
 
-                            for (ByteBuffer bb : listOfBuffers) {
-                                totalCapacity += bb.limit();
-                            }
+                                var resultBuffer = ByteBuffer.allocate(totalCapacity);
 
-                            var resultBuffer = ByteBuffer.allocate(totalCapacity);
+                                for (ByteBuffer bb : listOfBuffers) {
+                                    resultBuffer.put(bb);
+                                }
 
-                            for (ByteBuffer bb : listOfBuffers) {
-                                resultBuffer.put(bb);
-                            }
+                                return resultBuffer.flip();
+                            })
+                            .as(connection::send))
+                    .start()
+                    .subscribe()
+            )).start();
 
-                            return resultBuffer.flip();
-                        })
-                        .as(connection::send)
-                )
-                .start()
-                .subscribe())
-        ).start();
+            Thread.sleep(1000);
 
-        Thread.sleep(1000);
+            var channel = SocketChannel.open(new InetSocketAddress(8080));
 
-        var channel = SocketChannel.open(new InetSocketAddress(8080));
+            channel.write(ByteBuffer.wrap("Hello".getBytes()));
+            channel.write(ByteBuffer.wrap(" ".getBytes()));
+            channel.write(ByteBuffer.wrap("World\n\r".getBytes()));
+            channel.write(ByteBuffer.wrap("-END-".getBytes()));
 
+            var helloWorldByteLength = "Hello World".getBytes().length;
 
-        channel.write(ByteBuffer.wrap("Hello".getBytes()));
-        channel.write(ByteBuffer.wrap(" ".getBytes()));
-        channel.write(ByteBuffer.wrap("World\n\r".getBytes()));
-        channel.write(ByteBuffer.wrap("-END-".getBytes()));
+            var buffer = ByteBuffer.allocate(helloWorldByteLength);
 
-        var helloWorldByteLength = "Hello World".getBytes().length;
-
-        var buffer = ByteBuffer.allocate(helloWorldByteLength);
-
-        Assert.assertEquals(helloWorldByteLength, channel.read(buffer));
-        Assert.assertEquals("Hello World", new String(buffer.array()));
-        server.get().dispose();
-        Thread.sleep(1000);
+            Assert.assertEquals(helloWorldByteLength, channel.read(buffer));
+            Assert.assertEquals("Hello World", new String(buffer.array()));
+        }
+        finally {
+            server.get().dispose();
+        }
     }
 
 
@@ -90,21 +89,27 @@ public class DefaultReactiveServerTest {
                 .start()
                 .subscribe();
 
-        var channel = SocketChannel.open(new InetSocketAddress("localhost", 8080));
+        try {
 
-        cdl.await();
+            var channel = SocketChannel.open(new InetSocketAddress("localhost", 8080));
 
-        StepVerifier.create(connectionReference.get().receive(), 0)
-                    .expectSubscription()
-                    .then(unchecked(() -> channel.write(ByteBuffer.wrap("Hello World".getBytes()))))
-                    .thenRequest(1)
-                    .assertNext(bb -> Assert.assertEquals("Hello World", new String(bb.array()).trim()))
-                    .then(unchecked(() -> channel.write(ByteBuffer.wrap("Hello World".getBytes()))))
-                    .thenRequest(1)
-                    .assertNext(bb -> Assert.assertEquals("World Hello", new String(bb.array()).trim()))
-                    .thenCancel()
-                    .verify();
-        server.dispose();
+            cdl.await();
+
+            StepVerifier.create(connectionReference.get()
+                                                   .receive(), 0)
+                        .expectSubscription()
+                        .then(unchecked(() -> channel.write(ByteBuffer.wrap("Hello World".getBytes()))))
+                        .thenRequest(1)
+                        .assertNext(bb -> Assert.assertEquals("Hello World", new String(bb.array()).trim()))
+                        .then(unchecked(() -> channel.write(ByteBuffer.wrap("World Hello".getBytes()))))
+                        .thenRequest(1)
+                        .assertNext(bb -> Assert.assertEquals("World Hello", new String(bb.array()).trim()))
+                        .thenCancel()
+                        .verify();
+        }
+        finally {
+            server.dispose();
+        }
     }
 
     @Test

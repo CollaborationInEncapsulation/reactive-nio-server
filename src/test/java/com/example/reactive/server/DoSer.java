@@ -10,7 +10,7 @@ import static pl.touk.throwing.ThrowingRunnable.unchecked;
 public class DoSer {
 
     public static void main(String[] args) {
-        Socket[] sockets = new Socket[10000];
+        Socket[] sockets = new Socket[5000];
         for (int i = 0; i < sockets.length; i++) {
             try {
                 sockets[i] = new Socket("localhost", 8080);
