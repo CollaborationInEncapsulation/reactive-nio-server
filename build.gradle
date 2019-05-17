@@ -9,16 +9,15 @@ sourceCompatibility = 11
 
 repositories {
 //    mavenLocal()
-    maven {
-      url = "https://repo.spring.io/snapshot"
-    }
+    maven { url = "https://repo.spring.io/snapshot" }
+    maven { url 'https://repo.spring.io/milestone' }
     mavenCentral()
 }
 
 dependencies {
     compile 'pl.touk:throwing-function:1.3'
-    compile 'io.projectreactor:reactor-core:3.2.3.BUILD-SNAPSHOT'
-    compile 'io.projectreactor.addons:reactor-extra:3.2.1.BUILD-SNAPSHOT'
+    compile 'io.projectreactor:reactor-core:3.3.0.BUILD-SNAPSHOT'
+    compile 'io.projectreactor.addons:reactor-extra:3.3.0.BUILD-SNAPSHOT'
     testCompile 'junit:junit:4.12'
-    testCompile 'io.projectreactor:reactor-test:3.2.2.RELEASE'
+    testCompile 'io.projectreactor:reactor-test:3.3.0.BUILD-SNAPSHOT'
 }

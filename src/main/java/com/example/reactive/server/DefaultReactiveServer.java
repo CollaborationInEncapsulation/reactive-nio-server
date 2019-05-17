@@ -39,8 +39,7 @@ public class DefaultReactiveServer implements ReactiveServer {
 
     @Override
     public Mono<Void> start() {
-        return Flux
-            .create(unchecked(sink -> {
+        return Flux.push(unchecked(sink -> {
                 var connections = new HashMap<SocketChannel, Tuple2<FluxSink<SelectionKey>, FluxSink<SelectionKey>>>();
                 var server = ServerSocketChannel
                     .open()
@@ -54,7 +53,7 @@ public class DefaultReactiveServer implements ReactiveServer {
 
                 sink.onDispose(unchecked(server::close)::run);
 
-                while (true) {
+                while (!sink.isCancelled()) {
                     selector.select(unchecked(key -> {
                         if (key.isValid()) {
                             if (key.isAcceptable()) {

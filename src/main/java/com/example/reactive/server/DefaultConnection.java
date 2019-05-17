@@ -15,7 +15,7 @@ import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
 import static pl.touk.throwing.ThrowingConsumer.unchecked;
-import static pl.touk.throwing.ThrowingFunction.unchecked;
+import static pl.touk.throwing.ThrowingBiConsumer.unchecked;
 
 public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Connection {
 
@@ -71,15 +71,13 @@ public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Con
             .publishOn(scheduler)
             .doOnCancel(this::close)
             //endregion
-            .concatMap(unchecked(sk -> {
-                var buffer = ByteBuffer.allocate(1024);
+            .handle(unchecked((sk, sink) -> {
+                var buffer = ByteBuffer.allocateDirect(1024);
                 var read = socketChannel.read(buffer);
 
                 if (read > 0) {
-                    return Mono.just(buffer.flip());
+                    sink.next(buffer.flip());
                 }
-
-                return Mono.empty();
             }));
     }
 
@@ -100,7 +98,7 @@ public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Con
             //region Complex Write Pipe
             .doOnNext(sk -> {
                 currentSelectionKey = sk;
-                currentSelectionKey.interestOps(SelectionKey.OP_READ);
+                sk.interestOps(SelectionKey.OP_READ);
             })
             .publishOn(scheduler)
             //endregion
@@ -119,7 +117,7 @@ public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Con
         }
 
         if (result == -1) {
-            upstream().cancel();
+            cancel();
         }
 
         if (buffer.hasRemaining()) {
@@ -132,6 +130,6 @@ public class DefaultConnection extends BaseSubscriber<ByteBuffer> implements Con
             return;
         }
 
-        upstream().request(1);
+        request(1);
     }
 }

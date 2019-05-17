@@ -5,7 +5,11 @@ import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketOption;
 import java.nio.ByteBuffer;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.AbstractSelectionKey;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.Set;
 
@@ -16,7 +20,7 @@ public class DefaultConnectionTest {
 
     @Test
     public void shouldSupportBackpressure() {
-
+        var channel = new TestSocketChannel();
     }
 
     class TestSocketChannel extends  SocketChannel {
@@ -26,8 +30,8 @@ public class DefaultConnectionTest {
          *
          * @param provider The provider that created this channel
          */
-        protected TestSocketChannel(SelectorProvider provider) {
-            super(provider);
+        protected TestSocketChannel() {
+            super(null);
         }
 
         @Override
@@ -124,6 +128,34 @@ public class DefaultConnectionTest {
         @Override
         protected void implConfigureBlocking(boolean block) throws IOException {
 
+        }
+    }
+
+    class TestSelectionKey extends AbstractSelectionKey {
+
+        @Override
+        public SelectableChannel channel() {
+            return null;
+        }
+
+        @Override
+        public Selector selector() {
+            return null;
+        }
+
+        @Override
+        public int interestOps() {
+            return 0;
+        }
+
+        @Override
+        public SelectionKey interestOps(int ops) {
+            return null;
+        }
+
+        @Override
+        public int readyOps() {
+            return 0;
         }
     }
 }
